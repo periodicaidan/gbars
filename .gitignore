@@ -1,0 +1,5 @@
+/target
+**/*.rs.bk
+/src/test_roms/
+
+*_old

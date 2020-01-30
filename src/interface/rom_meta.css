@@ -1,0 +1,11 @@
+* {
+    flex-direction: column;
+    box-sizing: border-box;
+    flex-grow: 1;
+}
+
+.row {
+    flex-direction: row;
+    justify-self: center;
+    height: 40px;
+}

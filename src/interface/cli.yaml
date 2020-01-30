@@ -1,0 +1,88 @@
+name: GBARS
+version: "0.1.0-beta"
+author: Aidan T. Manning <periodicaidan@gmail.com>
+about: GameBoy/GameBoy Advance Emulator and Debugger Written in Rust
+args:
+  - rom:
+      short: r
+      long: rom
+      value_name: PATH
+      help: Path to a GB/GBC/GBA ROM
+      index: 1
+subcommands:
+  - patch:
+      about: Patch a ROM with an IPS file
+      args:
+        - rom:
+            short: r
+            long: rom
+            value_name: PATH
+            help: Path to the GB/GBC/GBA ROM to patch
+            required: true
+        - ips:
+            short: i
+            long: ips
+            value_name: PATH
+            help: Path to patch file to apply
+            required: true
+        - backup:
+            long: backup
+            help: Create a backup of the original ROM before patching
+            possible_values: [ true, false ]
+            takes_values: true
+            default_value: true
+      subcommands:
+        - restore:
+            about: Restore a patched ROM from a backup file
+            args:
+              - ROM:
+                  help: Path to ROM to restore
+                  required: true
+                  index: 1
+              - BACKUP:
+                  help: Path to backup to restore with (defaults to `[ROM].bak`)
+                  required: false
+                  index: 2
+              - retain-backup:
+                  long: retain
+                  possible_values: [ true, false ]
+                  takes_values: true
+                  default_value: true
+  - debug:
+      about: Debug a ROM
+      args:
+        - interactive:
+            short: i
+            long: interactive
+            help: Enter an GDB-style debugging REPL
+  - dump:
+      about: Dump various files for viewing and debugging
+      subcommands:
+        - rom:
+            about: Dump the ROM of a GB/GBC/GBA game
+            args:
+              - ROM:
+                  help: Path to the ROM you want to dump
+                  required: true
+                  index: 1
+        - settings:
+            about: Dump your GBARS settings
+  - disas:
+      about: Disassemble a GB/GBC ROM into Z80 assembly language
+      args:
+        - ROM:
+            help: Path to the ROM you want to disassemble
+            required: true
+            index: 1
+        - file:
+            help: Create or specify a file to put the disassembly into
+            long: file
+            short: f
+            value_name: FILE
+  - as:
+      about: Assemble a ROM from Z80 assembly code
+      args:
+        - FILE:
+            help: Path to the Z80 file you want to build
+            index: 1
+            required: true
