@@ -10,5 +10,8 @@ chrono = "0.4.9"
 clap = {version="2.33.0", features=["yaml"]}
 gl = "0.13.0"
 glutin = "0.22.0-alpha1"
-portaudio = "0.7.0"
+#portaudio = "0.7.0"
 bitmatch = "0.1.0"
+
+[profile.release]
+lto = true

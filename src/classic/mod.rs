@@ -1,6 +1,7 @@
 pub mod cartridge;
 pub mod memory;
 pub mod instruction;
+pub mod registers;
 pub mod cpu;
 
 #[cfg(test)]

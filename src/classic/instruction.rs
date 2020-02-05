@@ -14,7 +14,7 @@ pub enum Arg {
     Data16(u16),
     Addr8(u8),
     Addr16(u16),
-    Rel8(i8),
+    Offset8(i8),
 }
 
 impl Instruction {
@@ -68,7 +68,7 @@ impl Arg {
     fn d16() -> Self { Arg::Data16(0) }
     fn a8() -> Self { Arg::Addr8(0) }
     fn a16() -> Self { Arg::Addr16(0) }
-    fn r8() -> Self { Arg::Rel8(0) }
+    fn r8() -> Self { Arg::Offset8(0) }
 }
 
 lazy_static!{
@@ -294,7 +294,7 @@ lazy_static!{
         Instruction::new(0xC2, "jp nz, <a16>", Arg::a16(), 12, 16),
         Instruction::new(0xC3, "jp <a16>", Arg::a16(), 16, 16),
         Instruction::new(0xC4, "call nz, <a16>", Arg::a16(), 12, 24),
-        Instruction::new(0xC5, "push BC", Arg::None(), 16, 16),
+        Instruction::new(0xC5, "push BC", Arg::None, 16, 16),
         Instruction::new(0xC6, "add A, <d8>", Arg::d8(), 8, 8),
         Instruction::new(0xC7, "rst $00", Arg::None, 16, 16),
 
@@ -312,7 +312,7 @@ lazy_static!{
         Instruction::new(0xD2, "jp nc, <a16>", Arg::a16(), 12, 16),
         Instruction::none(0xD3),
         Instruction::new(0xD4, "call nc, <a16>", Arg::a16(), 12, 24),
-        Instruction::new(0xD5, "push DE", Arg::None(), 16, 16),
+        Instruction::new(0xD5, "push DE", Arg::None, 16, 16),
         Instruction::new(0xD6, "sub A, <d8>", Arg::d8(), 8, 8),
         Instruction::new(0xD7, "rst $10", Arg::None, 16, 16),
 
@@ -330,7 +330,7 @@ lazy_static!{
         Instruction::new(0xE2, "ld (C), A", Arg::None, 8, 8),
         Instruction::none(0xE3),
         Instruction::none(0xE4),
-        Instruction::new(0xE5, "push HL", Arg::None(), 16, 16),
+        Instruction::new(0xE5, "push HL", Arg::None, 16, 16),
         Instruction::new(0xE6, "and A, <d8>", Arg::d8(), 8, 8),
         Instruction::new(0xE7, "rst $20", Arg::None, 16, 16),
 
@@ -348,7 +348,7 @@ lazy_static!{
         Instruction::new(0xF2, "ld A, (C)", Arg::None, 8, 8),
         Instruction::new(0xF3, "di", Arg::None, 4, 4),
         Instruction::none(0xF4),
-        Instruction::new(0xF5, "push AF", Arg::None(), 16, 16),
+        Instruction::new(0xF5, "push AF", Arg::None, 16, 16),
         Instruction::new(0xF6, "or A, <d8>", Arg::d8(), 8, 8),
         Instruction::new(0xF7, "rst $30", Arg::None, 16, 16),
 
@@ -360,6 +360,6 @@ lazy_static!{
         Instruction::none(0xFD),
         Instruction::new(0xFE, "cp A, <d8>", Arg::d8(), 8, 8),
         Instruction::new(0xFF, "rst $38", Arg::None, 16, 16),
-    ]
+    ];
 }
 

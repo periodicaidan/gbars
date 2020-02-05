@@ -355,7 +355,7 @@ impl MBC {
         }
     }
 
-    fn read_ram(&self, offset: usize) -> Option<u8> {
+    pub fn read_ram(&self, offset: usize) -> Option<u8> {
         match self {
             MBC::MBC1(mbc) => mbc.ram.read_byte(offset),
             MBC::MBC2(mbc) => mbc.ram.read_byte(offset),
@@ -365,7 +365,7 @@ impl MBC {
         }
     }
 
-    fn read_ram_slice(&self, start: usize, end: usize) -> Option<Vec<u8>> {
+    pub fn read_ram_slice(&self, start: usize, end: usize) -> Option<Vec<u8>> {
         match self {
             MBC::MBC1(mbc) => mbc.ram.read_bytes(start, end),
             MBC::MBC2(mbc) => mbc.ram.read_bytes(start, end),
@@ -375,7 +375,7 @@ impl MBC {
         }
     }
 
-    fn write_ram(&mut self, offset: usize, data: u8) -> Result<usize, String> {
+    pub fn write_ram(&mut self, offset: usize, data: u8) -> Result<usize, String> {
         match self {
             MBC::MBC1(mbc) => mbc.ram.write_byte(offset, data),
             MBC::MBC2(mbc) => mbc.ram.write_byte(offset, data),
@@ -385,7 +385,7 @@ impl MBC {
         }
     }
 
-    fn write_ram_slice(&mut self, start: usize, data: &[u8]) -> Result<usize, String> {
+    pub fn write_ram_slice(&mut self, start: usize, data: &[u8]) -> Result<usize, String> {
         match self {
             MBC::MBC1(mbc) => mbc.ram.write_bytes(start, data),
             MBC::MBC2(mbc) => mbc.ram.write_bytes(start, data),

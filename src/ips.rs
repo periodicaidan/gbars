@@ -7,11 +7,11 @@ use std::fs::{File, copy, rename, remove_file};
 use std::path::Path;
 use std::io::prelude::*;
 use std::io::{BufReader, BufWriter, SeekFrom};
+use std::ffi::OsStr;
 
 /// Reads and IPS file and extracts all the patches from it
 ///
-/// An IPS file looks as follows (whitespace added for readability; in an IPS file every character
-/// is used):
+/// An IPS file looks as follows (whitespace added for readability):
 ///
 /// ```
 /// PATCH
@@ -29,22 +29,25 @@ use std::io::{BufReader, BufWriter, SeekFrom};
 /// next two bytes are read as the length of the patch, and then one more byte is read. This last
 /// byte is to be copied into the ROM <length> times.
 ///
-pub fn read(ips_file: &str) -> Option<Vec<(u64, Vec<u8>)>> {
+pub fn read(ips_file: &Path) -> Option<Vec<(usize, Vec<u8>)>> {
     // Check that the extension is ".ips"
-    let ext: Vec<&str> = ips_file.split(".").collect();
-    if ext.last() != Some(&"ips") {
-        println!("{} is not an IPS file (extension must be \".ips\"", ips_file);
+    let ext = ips_file.extension().and_then(OsStr::to_str);
+    if ext != Some(&"ips") {
+        println!("{} is not an IPS file (extension must be \".ips\"", ips_file.display());
         return None;
     }
 
-    let mut patches: Vec<(u64, Vec<u8>)> = Vec::new();
+    let mut patches = Vec::new();
 
     match File::open(ips_file) {
         Ok(file) => {
-            let mut buffer: Vec<u8> = Vec::new();
-            BufReader::new(file).read_to_end(&mut buffer).expect("File Read Error");
+            let mut buffer = Vec::new();
+            BufReader::new(file)
+                .read_to_end(&mut buffer)
+                .expect("File Read Error");
+
             let mut header = &buffer[0..5];
-            let mut file_pointer = 5usize;
+            let mut file_pointer = 5;
 
             // Check that the file starts with "PATCH"
             if header != b"PATCH" {
@@ -59,19 +62,19 @@ pub fn read(ips_file: &str) -> Option<Vec<(u64, Vec<u8>)>> {
             // Loop until we reach the end of the file
             while data != b"" && data != b"EOF" {
                 let mut patch = Vec::new();
-                let mut offset = 0u64;
+                let mut offset = 0;
 
                 // These three bytes represent the offset or beginning of where the patch should go
                 // in the ROM
                 for c in data {
-                    offset = offset * 256 + (*c as u64);
+                    offset = offset * 256 + (*c as usize);
                 }
 
                 // The next two bytes represent the length of the patch
                 data = &buffer[file_pointer..file_pointer + 2];
                 file_pointer += 2;
 
-                let mut length = 0usize;
+                let mut length = 0;
                 for c in data {
                     length = length * 256 + (*c as usize);
                 }
@@ -127,7 +130,7 @@ pub fn patch(rom_file: &str, ips_file: &str, backup: bool) -> Result<u64, String
     let mut writer = BufWriter::new(patched_file);
 
     // Get the list of patches
-    let p = self::read(ips_file);
+    let p = self::read(Path::new(ips_file));
 
     if let None = p {
         return Err("Error in IPS file. Aborting.".to_string());
@@ -149,7 +152,7 @@ pub fn patch(rom_file: &str, ips_file: &str, backup: bool) -> Result<u64, String
 
             // Apply the patches to the patched file
             for (offset, patch) in patches {
-                writer.seek(SeekFrom::Start(offset))
+                writer.seek(SeekFrom::Start(offset as u64))
                     .expect(&format!("Error seeking to offset 0x{:06X}", offset));
 
                 if let Ok(bytes_written) = writer.write(&patch) {
@@ -174,8 +177,7 @@ pub fn patch(rom_file: &str, ips_file: &str, backup: bool) -> Result<u64, String
     }
 
     if !backup {
-        let rm = remove_file(format!("{}.bak", rom_file));
-        if let Err(e) = rm {
+        if let Err(e) = remove_file(format!("{}.bak", rom_file)) {
             println!("Could not delete backup file, so it has been preserved.")
         }
     }

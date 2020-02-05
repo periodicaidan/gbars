@@ -4,6 +4,7 @@
 
 //pub mod interface;
 pub mod classic;
+pub mod ips;
 //pub mod graphics;
 //pub mod emu;
 //pub mod ips;

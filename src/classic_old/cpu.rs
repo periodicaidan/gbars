@@ -1,7 +1,6 @@
 use super::gb_types::{CPU, Memory, CPUStatus, Register};
 use std::num::Wrapping;
 
-
 impl CPU {
     pub fn exec(&mut self, opcode: u8) -> CPUStatus {
         use self::CPUStatus::*;
