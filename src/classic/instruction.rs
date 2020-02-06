@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Instruction {
     pub opcode: u8,
     pub prefixed: bool,
@@ -7,7 +7,7 @@ pub struct Instruction {
     pub cycles: (usize, usize), // min, max
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Arg {
     None,
     Data8(u8),

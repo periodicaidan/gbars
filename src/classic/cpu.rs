@@ -4,31 +4,37 @@ use bitmatch::bitmatch;
 use std::ops::Add;
 use super::registers::Reg8;
 use super::memory::MBC;
-//use glutin::platform::macos::ActivationPolicy::Regular;
+use super::utils::{wrapping_inc_16, wrapping_dec_16, add_i8_to_u16};
+use crate::classic::utils::wrapping_dec_8;
 
 /// The CPU here is conceptualized as a state machine with some frills. Consuming a byte from memory
 /// changes its state.
 pub struct Cpu {
-    state: CpuState,
-    instruction: Instruction,
-    registers: Registers,
-    ip: usize,
+    pub(crate) state: CpuState,
+    pub(crate) instruction: Instruction,
+    pub(crate) registers: Registers,
+    pub(crate) disable_interrupts: bool,
+    pub(crate) enable_interrupts: bool,
+    pub(crate) stack: Vec<u16>
 }
 
-/// There are 3 basic state. In the `OpRead` state, the CPU reads the next byte in memory as an
+/// There are 3 basic states. In the `OpRead` state, the CPU reads the next byte in memory as an
 /// opcode. In the `DataRead` state, the CPU reads it as data or partial data (a byte, an address,
 /// an offset, etc.). And in the `Exec` state, the CPU executes the current instruction.
+#[derive(Debug, Eq, PartialEq)]
 pub enum CpuState {
     OpRead(OpRead),
     DataRead(DataRead),
     Exec,
 }
 
+#[derive(Debug, Eq, PartialEq)]
 pub enum OpRead {
     General,
     PrefixCB,
 }
 
+#[derive(Debug, Eq, PartialEq)]
 pub enum DataRead {
     Byte,
     ShortHi,
@@ -36,6 +42,17 @@ pub enum DataRead {
 }
 
 impl Cpu {
+    pub fn init() -> Self {
+        Self {
+            state: CpuState::OpRead(OpRead::General),
+            instruction: Instruction::from_opcode(0), // NOP
+            registers: Registers::init(),
+            disable_interrupts: false,
+            enable_interrupts: false,
+            stack: Vec::new()
+        }
+    }
+
     /// Performs some action based on the CPU's state, and then transitions to the next state.
     pub fn step(&mut self, memory_controller: &mut MBC) -> Result<(), String> {
         match self.state {
@@ -44,12 +61,13 @@ impl Cpu {
             // state based on the argument the instruction expects.
             CpuState::OpRead(OpRead::General) => {
                 let opcode = memory_controller.read_rom(self.registers.pc as usize).unwrap();
-                let instr = Instruction::from_opcode(opcode);
-                match instr.arg {
+                self.instruction = Instruction::from_opcode(opcode);
+
+                match self.instruction.arg {
                     // If the instruction requires no arguments, we first check if it's a prefixed
                     // instruction (with opcode 0xCB). If it is, we transition to the
                     // `OpRead::PrefixCB` state. Otherwise, we move right on to the `Exec` state.
-                    Arg::None => if instr.opcode == 0xCB {
+                    Arg::None => if self.instruction.opcode == 0xCB {
                         self.state = CpuState::OpRead(OpRead::PrefixCB);
                     } else {
                         self.state = CpuState::Exec
@@ -68,7 +86,7 @@ impl Cpu {
                     Arg::Data16(_) => self.state = CpuState::DataRead(DataRead::ShortHi),
                 }
 
-                self.registers.pc.wrapping_add(1);
+                self.registers.pc = wrapping_inc_16(self.registers.pc);
             },
 
             // In this state, the next byte in memory is read as a *prefixed* opcode, which has its
@@ -76,36 +94,36 @@ impl Cpu {
             CpuState::OpRead(OpRead::PrefixCB) => {
                 let byte = memory_controller.read_rom(self.registers.pc as usize).unwrap();
                 self.state = CpuState::Exec;
-                self.registers.pc.wrapping_add(1);
+                self.registers.pc = wrapping_inc_16(self.registers.pc);
             },
 
             // In this state the next byte in memory is read as a literal byte and then the
             // CPU transitions to the `Exec` state.
             CpuState::DataRead(DataRead::Byte) => {
                 let byte = memory_controller.read_rom(self.registers.pc as usize).unwrap();
-                match self.instruction.arg {
-                    Arg::Addr8(mut addr) => addr = byte,
-                    Arg::Data8(mut data) => data = byte,
-                    Arg::Offset8(mut offset) => offset = byte as i8,
-                    _ => {}
-                }
+                self.instruction.arg = match self.instruction.arg {
+                    Arg::Addr8(_) => Arg::Addr8(byte),
+                    Arg::Data8(_) => Arg::Data8(byte),
+                    Arg::Offset8(_) => Arg::Offset8(byte as i8),
+                    _ => panic!()
+                };
 
                 self.state = CpuState::Exec;
-                self.registers.pc.wrapping_add(1);
+                self.registers.pc = wrapping_inc_16(self.registers.pc);
             },
 
             // The next byte in memory is read as the high nibble of a literal short and then the
             // CPU transitions to the `DataRead::ShortLo` state to get the low nibble.
             CpuState::DataRead(DataRead::ShortHi) => {
                 let byte = memory_controller.read_rom(self.registers.pc as usize).unwrap();
-                match self.instruction.arg {
-                    Arg::Addr16(mut addr) => addr |= ((byte as u16) << 8),
-                    Arg::Data16(mut data) => data |= ((byte as u16) << 8),
-                    _ => {}
-                }
+                self.instruction.arg = match self.instruction.arg {
+                    Arg::Addr16(_) => Arg::Addr16((byte as u16) << 8),
+                    Arg::Data16(_) => Arg::Data16((byte as u16) << 8),
+                    _ => panic!()
+                };
 
                 self.state = CpuState::DataRead(DataRead::ShortLo);
-                self.registers.pc.wrapping_add(1);
+                self.registers.pc = wrapping_inc_16(self.registers.pc);
             },
 
             // The next byte in memory is read as the low nibble of a literal short. This is
@@ -113,14 +131,14 @@ impl Cpu {
             // unsigned short. Then the CPU transitions to the `Exec` state.
             CpuState::DataRead(DataRead::ShortLo) => {
                 let byte = memory_controller.read_rom(self.registers.pc as usize).unwrap();
-                match self.instruction.arg {
-                    Arg::Addr16(mut addr) => addr |= byte as u16,
-                    Arg::Data16(mut data) => data |= byte as u16,
-                    _ => {}
-                }
+                self.instruction.arg = match self.instruction.arg {
+                    Arg::Addr16(addr) => Arg::Addr16(addr | byte as u16),
+                    Arg::Data16(data) => Arg::Data16(data | byte as u16),
+                    _ => panic!()
+                };
 
                 self.state = CpuState::Exec;
-                self.registers.pc.wrapping_add(1);
+                self.registers.pc = wrapping_inc_16(self.registers.pc);
             },
 
             // In this state no bytes are read from memory and the program counter is not
@@ -128,10 +146,23 @@ impl Cpu {
             // and then the CPU is put back into the `OpRead::General` state to begin formulating
             // the next instruction.
             CpuState::Exec => {
+                let di = self.disable_interrupts;
+                let ei = self.enable_interrupts;
+
                 if self.instruction.prefixed {
                     self.execute_prefixed_instruction(memory_controller);
                 } else {
                     self.execute_instruction(memory_controller);
+                }
+
+                if di {
+                    // enable interrupts
+                    self.disable_interrupts = false;
+                }
+
+                if ei {
+                    // disable interrupts
+                    self.enable_interrupts = false;
                 }
 
                 self.state = CpuState::OpRead(OpRead::General);
@@ -147,7 +178,7 @@ impl Cpu {
     ///     - rl[c]a
     ///     - rr[c]a
     #[bitmatch]
-    fn execute_instruction(&mut self, memory_controller: &mut MBC) -> Result<(), String> {
+    fn execute_instruction(&mut self, memory: &mut MBC) -> Result<(), String> {
         let opcode = self.instruction.opcode;
         let arg = &self.instruction.arg;
 
@@ -159,11 +190,15 @@ impl Cpu {
             // stop
             "0001_0000" => {},
 
-            // disable interrupts
-            "1111_0011" => {},
+            // disable interrupts after next instruction
+            "1111_0011" => {
+                self.disable_interrupts = true;
+            },
 
-            // enable interrupts
-            "1111_1011" => {},
+            // enable interrupts after next instruction
+            "1111_1011" => {
+                self.enable_interrupts = true;
+            },
 
             // prefixed instruction (this case isn't possible with this setup but cases must be exhaustive)
             "1100_1011" => {},
@@ -204,33 +239,33 @@ impl Cpu {
             // load A into a stored memory location
             "00xx_0010" => match x {
                 0b00 => {
-                    memory_controller.write_ram(self.registers.get_bc() as usize, self.registers.a.0);
+                    memory.write_ram(self.registers.get_bc() as usize, self.registers.a.0);
                 },
                 0b01 => {
-                    memory_controller.write_ram(self.registers.get_de() as usize, self.registers.a.0);
+                    memory.write_ram(self.registers.get_de() as usize, self.registers.a.0);
                 },
                 0b10 => {
-                    let res = memory_controller.write_ram(self.registers.get_hl() as usize, self.registers.a.0);
-                    self.registers.do_hl(|hl| hl.wrapping_add(1));
+                    let res = memory.write_ram(self.registers.get_hl() as usize, self.registers.a.0);
+                    self.registers.inc_hl();
                 },
                 0b11 => {
-                    let res = memory_controller.write_ram(self.registers.get_hl() as usize, self.registers.a.0);
-                    self.registers.do_hl(|hl| hl.wrapping_sub(1));
+                    let res = memory.write_ram(self.registers.get_hl() as usize, self.registers.a.0);
+                    self.registers.dec_hl();
                 },
                 _ => {}
             },
 
             // load the data at a memory location stored into A
             "00xx_1010" => match x {
-                0b00 => self.registers.a.0 = memory_controller.read_ram(self.registers.get_bc() as usize).unwrap(),
-                0b01 => self.registers.a.0 = memory_controller.read_ram(self.registers.get_de() as usize).unwrap(),
+                0b00 => self.registers.a.0 = memory.read_ram(self.registers.get_bc() as usize).unwrap(),
+                0b01 => self.registers.a.0 = memory.read_ram(self.registers.get_de() as usize).unwrap(),
                 0b10 => {
-                    self.registers.a.0 = memory_controller.read_ram(self.registers.get_hl() as usize).unwrap();
-                    self.registers.do_hl(|hl| hl.wrapping_add(1));
+                    self.registers.a.0 = memory.read_ram(self.registers.get_hl() as usize).unwrap();
+                    self.registers.inc_hl();
                 },
                 0b11 => {
-                    self.registers.a.0 = memory_controller.read_ram(self.registers.get_hl() as usize).unwrap();
-                    self.registers.do_hl(|hl| hl.wrapping_sub(1));
+                    self.registers.a.0 = memory.read_ram(self.registers.get_hl() as usize).unwrap();
+                    self.registers.dec_hl();
                 },
                 _ => {}
             }
@@ -238,10 +273,10 @@ impl Cpu {
             // 16-bit increment
             "00xx_0011" => if let Arg::None = arg {
                 match x {
-                    0b00 => self.registers.do_bc(|bc| bc + 1),
-                    0b01 => self.registers.do_de(|de| de + 1),
-                    0b10 => self.registers.do_hl(|hl| hl + 1),
-                    0b11 => self.registers.sp = self.registers.sp.wrapping_add(1),
+                    0b00 => self.registers.inc_bc(),
+                    0b01 => self.registers.inc_de(),
+                    0b10 => self.registers.inc_hl(),
+                    0b11 => self.registers.sp = wrapping_inc_16(self.registers.sp),
                     _ => {}
                 }
             },
@@ -249,10 +284,10 @@ impl Cpu {
             // 16-bit decrement
             "00xx_1011" => if let Arg::None = arg {
                 match x {
-                    0b00 => self.registers.do_bc(|bc| bc - 1),
-                    0b01 => self.registers.do_de(|de| de - 1),
-                    0b10 => self.registers.do_hl(|hl| hl - 1),
-                    0b11 => self.registers.sp = self.registers.sp.wrapping_sub(1),
+                    0b00 => self.registers.dec_bc(),
+                    0b01 => self.registers.dec_de(),
+                    0b10 => self.registers.dec_hl(),
+                    0b11 => self.registers.sp = wrapping_dec_16(self.registers.sp),
                     _ => {}
                 }
             }
@@ -267,8 +302,8 @@ impl Cpu {
                     0b100 => self.registers.h += 1,
                     0b101 => self.registers.l += 1,
                     0b110 => {
-                        let data = memory_controller.read_ram(self.registers.get_hl() as usize).unwrap();
-                        memory_controller.write_ram(self.registers.get_hl() as usize, data + 1);
+                        let data = memory.read_ram(self.registers.get_hl() as usize).unwrap();
+                        memory.write_ram(self.registers.get_hl() as usize, data + 1);
                     },
                     0b111 => self.registers.a += 1,
                     _ => {}
@@ -277,20 +312,40 @@ impl Cpu {
 
             // 8-bit decrement
             "00xx_x101" => if let Arg::None = arg {
+                let before = match x {
+                    0b000 => self.registers.b.0,
+                    0b001 => self.registers.c.0,
+                    0b010 => self.registers.d.0,
+                    0b011 => self.registers.e.0,
+                    0b100 => self.registers.h.0,
+                    0b101 => self.registers.l.0,
+                    0b110 => memory.read_ram(self.registers.get_hl() as usize).unwrap(),
+                    0b111 => self.registers.a.0,
+                    _ => panic!()
+                };
+
+                let after = wrapping_dec_8(before);
+
                 match x {
-                    0b000 => self.registers.b -= 1,
-                    0b001 => self.registers.c -= 1,
-                    0b010 => self.registers.d -= 1,
-                    0b011 => self.registers.e -= 1,
-                    0b100 => self.registers.h -= 1,
-                    0b101 => self.registers.l -= 1,
+                    0b000 => self.registers.b.0 = after,
+                    0b001 => self.registers.c.0 = after,
+                    0b010 => self.registers.d.0 = after,
+                    0b011 => self.registers.e.0 = after,
+                    0b100 => self.registers.h.0 = after,
+                    0b101 => self.registers.l.0 = after,
                     0b110 => {
-                        let data = memory_controller.read_ram(self.registers.get_hl() as usize).unwrap();
-                        memory_controller.write_ram(self.registers.get_hl() as usize, data - 1);
+                        memory.write_ram(self.registers.get_hl() as usize, after);
                     },
-                    0b111 => self.registers.a -= 1,
-                    _ => {}
+                    0b111 => self.registers.a.0 = after,
+                    _ => panic!()
                 }
+
+                self.registers.set_flags(
+                    Some(after == 0),
+                    Some(false),
+                    Some(Registers::half_borrow_occurred(before, after)),
+                    None
+                );
             },
 
             // load immediate 8-bit value
@@ -303,7 +358,7 @@ impl Cpu {
                     0b100 => self.registers.h.load(data),
                     0b101 => self.registers.l.load(data),
                     0b110 => {
-                        memory_controller.write_ram(self.registers.get_hl() as usize, data);
+                        memory.write_ram(self.registers.get_hl() as usize, data);
                     },
                     0b111 => self.registers.a.load(data),
                     _ => {}
@@ -311,13 +366,11 @@ impl Cpu {
             },
 
             // load stored 8-bit value
-            "01xx_xxxx" => if let Arg::None = arg {
+            "01tt_tsss" => if let Arg::None = arg {
                 // halt
                 if opcode == 0x76 {
 
                 }
-
-                #[bitmatch] let "ootttsss" = x;
 
                 let data = match s {
                     0b000 => self.registers.b.0,
@@ -326,7 +379,7 @@ impl Cpu {
                     0b011 => self.registers.e.0,
                     0b100 => self.registers.h.0,
                     0b101 => self.registers.l.0,
-                    0b110 => memory_controller.read_ram(self.registers.get_hl() as usize).unwrap(),
+                    0b110 => memory.read_ram(self.registers.get_hl() as usize).unwrap(),
                     0b111 => self.registers.a.0,
                     _ => panic!()
                 };
@@ -339,7 +392,7 @@ impl Cpu {
                     0b100 => self.registers.h.load(data),
                     0b101 => self.registers.l.load(data),
                     0b110 => {
-                        memory_controller.write_ram(self.registers.get_hl() as usize, data);
+                        memory.write_ram(self.registers.get_hl() as usize, data);
                     },
                     0b111 => self.registers.a.load(data),
                     _ => panic!()
@@ -347,8 +400,7 @@ impl Cpu {
             },
 
             // accumulator arithmetic
-            "10xx_xxxx" => if let Arg::None = arg {
-                #[bitmatch] let "ooff_ffsss" = x;
+            "10ff_fsss" => if let Arg::None = arg {
                 let data = match s {
                     0b000 => self.registers.b.0,
                     0b001 => self.registers.c.0,
@@ -356,7 +408,7 @@ impl Cpu {
                     0b011 => self.registers.e.0,
                     0b100 => self.registers.h.0,
                     0b101 => self.registers.l.0,
-                    0b110 => memory_controller.read_ram(self.registers.get_hl() as usize).unwrap(),
+                    0b110 => memory.read_ram(self.registers.get_hl() as usize).unwrap(),
                     0b111 => self.registers.a.0,
                     _ => panic!()
                 };
@@ -398,7 +450,7 @@ impl Cpu {
                     _ => panic!()
                 };
 
-                self.registers.do_hl(|hl| hl + source);
+                self.registers.add_hl(source);
             },
 
             // pop the stack
@@ -418,11 +470,7 @@ impl Cpu {
 
             // relative jumps
             "0001_1000" => if let &Arg::Offset8(offset) = arg {
-                if offset < 0 {
-                    self.registers.pc -= (-offset) as u16;
-                } else {
-                    self.registers.pc += offset as u16;
-                }
+                self.registers.pc = add_i8_to_u16(self.registers.pc, offset);
             },
 
             "001x_x000" => if let &Arg::Offset8(offset) = arg {
@@ -435,11 +483,7 @@ impl Cpu {
                 };
 
                 if cond {
-                    if offset < 0 {
-                        self.registers.pc -= (-offset) as u16;
-                    } else {
-                        self.registers.pc += offset as u16;
-                    }
+                    self.registers.pc = add_i8_to_u16(self.registers.pc, offset);
                 }
             },
 
@@ -514,10 +558,10 @@ impl Cpu {
 
             // accumulator rotations
             "000x_x111" => match x {
-                0b00 => self.registers.a.rot_left(),
-                0b01 => self.registers.a.rot_right(),
-                0b10 => self.registers.a.rot_left(),
-                0b11 => self.registers.a.rot_right(),
+                0b00 => self.registers.rlca(),
+                0b01 => self.registers.rrca(),
+                0b10 => self.registers.rla(),
+                0b11 => self.registers.rra(),
                 _ => {}
             },
 
@@ -526,9 +570,9 @@ impl Cpu {
                 let addr = 0xFF00 + (half_addr as usize);
 
                 if x == 0 {
-                    memory_controller.write_ram(addr, self.registers.a.0);
+                    memory.write_ram(addr, self.registers.a.0);
                 } else {
-                    self.registers.a.0 = memory_controller.read_ram(addr).unwrap();
+                    self.registers.a.load(memory.read_ram(addr).unwrap());
                 }
             },
 
@@ -536,33 +580,28 @@ impl Cpu {
                 let addr = 0xFF00 + (self.registers.c.0 as usize);
 
                 if x == 0 {
-                    memory_controller.write_ram(addr, self.registers.a.0);
+                    memory.write_ram(addr, self.registers.a.0);
                 } else {
-                    self.registers.a.0 = memory_controller.read_ram(addr).unwrap();
+                    self.registers.a.load(memory.read_ram(addr).unwrap());
                 }
             },
 
             "111x_1010" => if let &Arg::Addr16(addr) = arg {
                 if x == 0 {
-                    memory_controller.write_ram(addr as usize, self.registers.a.0);
+                    memory.write_ram(addr as usize, self.registers.a.0);
                 } else {
-                    self.registers.a.0 = memory_controller.read_ram(addr as usize).unwrap();
+                    self.registers.a.load(memory.read_ram(addr as usize).unwrap());
                 }
             },
 
             // stack pointer loads
             "0000_1000" => if let &Arg::Addr16(addr) = arg {
-                memory_controller.write_ram(addr as usize, (self.registers.sp & 0xF0) as u8);
-                memory_controller.write_ram((addr + 1) as usize, (self.registers.sp & 0x0F) as u8);
+                memory.write_ram(addr as usize, (self.registers.sp & 0xF0) as u8);
+                memory.write_ram((addr + 1) as usize, (self.registers.sp & 0x0F) as u8);
             },
 
             "1111_1000" => if let &Arg::Offset8(offset) = arg {
-                let data = if offset < 0 {
-                    self.registers.sp.wrapping_sub(-offset as u16)
-                } else {
-                    self.registers.sp.wrapping_add(offset as u16)
-                };
-
+                let data = add_i8_to_u16(self.registers.sp, offset);
                 self.registers.set_hl(data);
             },
 
@@ -573,13 +612,7 @@ impl Cpu {
 
             // stack pointer arithmetic
             "1110_1000" => if let &Arg::Offset8(offset) = arg {
-                let new_value = if offset < 0 {
-                    self.registers.sp.wrapping_sub(-offset as u16)
-                } else {
-                    self.registers.sp.wrapping_add(offset as u16)
-                };
-
-                self.registers.sp = new_value;
+                self.registers.sp = add_i8_to_u16(self.registers.sp, offset);
             },
 
             // unused

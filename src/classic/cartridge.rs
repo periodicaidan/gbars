@@ -171,13 +171,13 @@ impl Cartridge {
                 }.to_string();
 
                 // Get the header checksum, which is one byte long
-                let header_checksum: u8 = match contents.get(0x14D) {
+                let header_checksum = match contents.get(0x14D) {
                     Some(n) => *n,
                     None => 0
                 };
 
                 // Get the global checksum, which is two bytes long
-                let global_checksum: u16 = {
+                let global_checksum = {
                     let upper_byte = match contents.get(0x14E) {
                         Some(n) => *n,
                         None => 0
@@ -210,7 +210,7 @@ impl Cartridge {
         }
     }
 
-    /// There are two criteria that the Gameboy checks for to validate ROMs: the scrolling
+    /// There are two criteria that the GameBoy checks for to validate ROMs: the scrolling
     /// NintendoⓇ graphic and the header checksum.
     ///
     /// As I was reading the docs for this bit it struck me just how pitiful of a security measure
@@ -220,7 +220,7 @@ impl Cartridge {
         // The scrolling NintendoⓇ graphic is a short program that runs when you turn on the GB (it
         // does exactly what you think). It is 48 bytes long, starting at offset 0x104, and must be
         // exactly as follows
-        let scrolling_nintendo_graphic: [u8; 48] = [
+        let scrolling_nintendo_graphic = [
             0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B,
             0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
             0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E,
@@ -269,6 +269,7 @@ impl Cartridge {
         Ok(())
     }
 
+    /// Returns true if the result of `validate` is `Ok`.
     pub fn is_valid(&self) -> bool { self.validate().is_ok() }
 
     pub fn read_rom(&self, offset: usize) -> Option<u8> {

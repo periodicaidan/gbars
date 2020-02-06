@@ -1,12 +1,11 @@
 [package]
 name = "gbars"
 version = "0.1.0"
-authors = ["periodicaidan <periodicaidan@gmail.com>"]
+authors = ["Aidan T. Manning <periodicaidan@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 lazy_static = "1.3.0"
-chrono = "0.4.9"
 clap = {version="2.33.0", features=["yaml"]}
 gl = "0.13.0"
 glutin = "0.22.0-alpha1"

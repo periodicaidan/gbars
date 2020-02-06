@@ -1,5 +1,6 @@
 use bitmatch::bitmatch;
-use std::ops::{Add, AddAssign, Sub, SubAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not};
+use std::ops::{Add, AddAssign, Sub, SubAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Deref, DerefMut};
+use super::utils::{wrapping_inc_16, wrapping_dec_16};
 
 /// The Zilog Z80 has an accumulator (A) and flag (F) register, along with 6 general-purpose
 /// registers (B, C, D, E, H, and L). All of these are 8-bit but can double up as AF, BC, DE, and
@@ -9,7 +10,7 @@ use std::ops::{Add, AddAssign, Sub, SubAssign, BitAnd, BitAndAssign, BitOr, BitO
 /// counter/instruction pointer).
 pub struct Registers {
     pub a: Reg8, // accumulator
-    pub f: Reg8, // flags
+    pub f: Reg8, // flags: ZNHC0000
     pub b: Reg8,
     pub c: Reg8,
     pub d: Reg8,
@@ -20,32 +21,92 @@ pub struct Registers {
     pub pc: u16, // program counter
 }
 
+impl Registers {
+    pub fn init() -> Self {
+        Self {
+            a: Reg8(0),
+            f: Reg8(0),
+            b: Reg8(0),
+            c: Reg8(0),
+            d: Reg8(0),
+            e: Reg8(0),
+            h: Reg8(0),
+            l: Reg8(0),
+            sp: 0,
+            pc: 0
+        }
+    }
+}
+
+pub trait Register<Size> : DerefMut {
+    fn load(&mut self, data: Size);
+}
+
 #[derive(Copy, Clone)]
 pub struct Reg8(pub u8);
 pub struct Reg16(u16);
 
-macro_rules! impl_16_bit_reg {
-    ($hi:ident, $lo:ident) => {
+#[derive(Copy, Clone)]
+pub struct Accumulator(u8);
+
+impl Deref for Accumulator {
+    type Target = u8;
+
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+
+impl DerefMut for Accumulator {
+    fn deref_mut(&mut self) -> &mut <Self as Deref>::Target { &mut self.0 }
+}
+
+impl Register<u8> for Accumulator {
+    fn load(&mut self, data: u8) {
+        **self = data;
+    }
+}
+
+macro_rules! impl_16_bit_funcs {
+    ($hi:ident , $lo:ident , $getter:ident , $setter:ident , $inc:ident , $dec:ident) => {
         impl Registers {
             #[bitmatch]
-            pub fn get_$hi$lo(&self) -> u16 {
+            pub fn $getter(&self) -> u16 {
                 let (h, l) = (self.$hi.0, self.$lo.0);
                 bitpack!("hhhhhhhh_llllllll") as u16
             }
 
             #[bitmatch]
-            pub fn set_$hi$lo(&mut self, val: u16) {
+            pub fn $setter(&mut self, val: u16) {
                 #[bitmatch] let "hhhhhhhh_llllllll" = val;
-                (self.$hi.0, self.$lo.0) = (h as u8, l as u8);
+                self.$hi.0 = h;
+                self.$lo.0 = l;
             }
 
-            pub fn do_$hi$lo(&mut self, f: impl FnOnce(u16) -> u16) {
-                let reg = self.get_$hi$lo();
-                self.set$hi$lo(f(reg));
+            pub fn $inc(&mut self) {
+                let $hi$lo = self.$getter();
+                self.$setter(wrapping_inc_16($hi$lo));
+            }
+
+            pub fn $dec(&mut self) {
+                let $hi$lo = self.$getter();
+                self.$setter(wrapping_dec_16($hi$lo));
             }
         }
     };
 }
+
+macro_rules! impl_16_bit_reg {
+    ($hi:ident , $lo:ident) => {
+        impl_16_bit_funcs!{
+            $hi, $lo,
+            get_$hi$lo,
+            set_$hi$lo,
+            inc_$hi$lo,
+            dec_$hi$lo
+        }
+    };
+}
+
+//impl_16_bit_reg!(b, c);
 
 /// 16-bit registers are implemented as getters and setters
 impl Registers {
@@ -62,10 +123,14 @@ impl Registers {
         self.c.0 = c as u8;
     }
 
-    pub fn do_bc(&mut self, f: impl FnOnce(u16) -> u16) {
+    fn do_bc(&mut self, f: impl FnOnce(u16) -> u16) {
         let bc = self.get_bc();
         self.set_bc(f(bc));
     }
+
+    pub fn inc_bc(&mut self) { self.do_bc(wrapping_inc_16); }
+
+    pub fn dec_bc(&mut self) { self.do_bc(wrapping_dec_16); }
 
     #[bitmatch]
     pub fn get_de(&self) -> u16 {
@@ -80,10 +145,14 @@ impl Registers {
         self.e.0 = e as u8;
     }
 
-    pub fn do_de(&mut self, f: impl FnOnce(u16) -> u16) {
+    fn do_de(&mut self, f: impl FnOnce(u16) -> u16) {
         let de = self.get_de();
         self.set_de(f(de));
     }
+
+    pub fn inc_de(&mut self) { self.do_de(wrapping_inc_16); }
+
+    pub fn dec_de(&mut self) { self.do_de(wrapping_dec_16); }
 
     #[bitmatch]
     pub fn get_hl(&self) -> u16 {
@@ -98,10 +167,16 @@ impl Registers {
         self.l.0 = l as u8;
     }
 
-    pub fn do_hl(&mut self, f: impl FnOnce(u16) -> u16) {
+    fn do_hl(&mut self, f: impl FnOnce(u16) -> u16) {
         let hl = self.get_hl();
         self.set_hl(f(hl));
     }
+
+    pub fn inc_hl(&mut self) { self.do_hl(wrapping_inc_16); }
+
+    pub fn dec_hl(&mut self) { self.do_hl(wrapping_dec_16); }
+
+    pub fn add_hl(&mut self, data: u16) { self.do_hl(|hl| hl.wrapping_add(data)); }
 
     #[bitmatch]
     pub fn get_af(&self) -> u16 {
@@ -224,7 +299,7 @@ impl Registers {
     /// represent the 10's and 1's place of a decimal number, respectively.
     pub fn daa(&mut self) {
         let mut new_carry = false;
-        if self.neg() {
+        if self.neg() { // previous instruction was a subtraction
             if self.carry() || self.a.0 > 0x99 {
                 self.a += 0x60;
                 new_carry = true;
@@ -262,6 +337,56 @@ impl Registers {
         );
     }
 
+    pub fn rlca(&mut self) {
+        self.a.rot_left();
+
+        self.set_flags(
+            Some(false),
+            Some(false),
+            Some(false),
+            Some(self.a.0 & 1 == 1)
+        );
+    }
+
+    #[bitmatch]
+    pub fn rla(&mut self) {
+        #[bitmatch] let "xyyyyyyy" = self.a.0;
+        let c = self.carry_bit();
+        self.a.0 = bitpack!("yyyyyyyc");
+
+        self.set_flags(
+            Some(false),
+            Some(false),
+            Some(false),
+            Some(x == 1)
+        );
+    }
+
+    pub fn rrca(&mut self) {
+        self.a.rot_right();
+
+        self.set_flags(
+            Some(false),
+            Some(false),
+            Some(false),
+            Some(self.a.0 & 0x80 == 1)
+        )
+    }
+
+    #[bitmatch]
+    pub fn rra(&mut self) {
+        #[bitmatch] let "xxxxxxxy" = self.a.0;
+        let c = self.carry_bit();
+        self.a.0 = bitpack!("cxxxxxxx");
+
+        self.set_flags(
+            Some(false),
+            Some(false),
+            Some(false),
+            Some(y == 1)
+        );
+    }
+
     pub fn set_flags(&mut self, z: Option<bool>, n: Option<bool>, h: Option<bool>, c: Option<bool>) {
         let mut f = 0;
         for flag in [z, n, h, c].iter() {
@@ -276,28 +401,22 @@ impl Registers {
     }
 
     #[bitmatch]
-    pub fn zero_bit(&self) -> u8 {
+    pub fn zero(&self) -> bool {
         #[bitmatch] let "zxxx_xxxx" = self.f.0;
-        z
+        z == 1
     }
 
-    pub fn zero(&self) -> bool { self.zero_bit() == 1 }
-
     #[bitmatch]
-    pub fn neg_bit(&self) -> u8 {
+    pub fn neg(&self) -> bool {
         #[bitmatch] let "xnxx_xxxx" = self.f.0;
-        n
+        n == 1
     }
-
-    pub fn neg(&self) -> bool { self.neg_bit() == 1 }
 
     #[bitmatch]
-    pub fn half_carry_bit(&self) -> u8 {
+    pub fn half_carry(&self) -> bool {
         #[bitmatch] let "xxhx_xxxx" = self.f.0;
-        h
+        h == 1
     }
-
-    pub fn half_carry(&self) -> bool { self.half_carry_bit() == 1 }
 
     #[bitmatch]
     pub fn carry_bit(&self) -> u8 {
@@ -403,8 +522,6 @@ impl Reg8 {
         self.0 = bitpack!("yxxxxxxx");
     }
 }
-
-// The following are some
 
 impl Add for Reg8 {
     type Output = Self;

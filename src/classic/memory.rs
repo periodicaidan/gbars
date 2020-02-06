@@ -1,36 +1,31 @@
 use std::ops::{Deref, DerefMut};
-use chrono::{DateTime, Local, Timelike};
 use bitmatch::bitmatch;
 
 /// The ROM of the cartridge, which is a pointer to a vector of bytes
-pub struct ROM {
-    inner: Vec<u8>
-}
+pub struct ROM(Vec<u8>);
 
 impl Deref for ROM {
     type Target = Vec<u8>;
 
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.0
     }
 }
 
 /// The RAM of the cartridge, which is a read/write pointer to a vector of bytes
-pub struct RAM {
-    inner: Vec<u8>
-}
+pub struct RAM(Vec<u8>);
 
 impl Deref for RAM {
     type Target = Vec<u8>;
 
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.0
     }
 }
 
 impl DerefMut for RAM {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+        &mut self.0
     }
 }
 
@@ -85,9 +80,7 @@ pub struct MBC5 {
 
 impl ROM {
     pub fn new(contents: Vec<u8>) -> Self {
-        Self {
-            inner: contents
-        }
+        Self(contents)
     }
 
     pub fn read_byte(&self, offset: usize) -> Option<u8> {
@@ -108,9 +101,7 @@ impl ROM {
 
 impl RAM {
     pub fn new(size: usize) -> Self {
-        Self {
-            inner: Vec::with_capacity(size),
-        }
+        Self(Vec::with_capacity(size))
     }
 
     pub fn read_byte(&self, offset: usize) -> Option<u8> {
@@ -312,12 +303,8 @@ impl MBC {
                 },
 
                 // Latches the time to the time register
-                // TODO: Figure out a way to implement this
                 0x6000...0x7FFF => if data == 1 && mbc.rom[offset] == 0 {
-                    let now: DateTime<Local> = Local::now();
-                    let seconds = now.second();
-                    let minutes = now.minute();
-                    let hours = now.hour();
+                    // TODO: Figure out a way to implement this
                 },
 
                 _ => {}
