@@ -14,8 +14,7 @@ pub struct Cpu {
     pub(crate) instruction: Instruction,
     pub(crate) registers: Registers,
     pub(crate) disable_interrupts: bool,
-    pub(crate) enable_interrupts: bool,
-    pub(crate) stack: Vec<u16>
+    pub(crate) enable_interrupts: bool
 }
 
 /// There are 3 basic states. In the `OpRead` state, the CPU reads the next byte in memory as an
@@ -48,8 +47,7 @@ impl Cpu {
             instruction: Instruction::from_opcode(0), // NOP
             registers: Registers::init(),
             disable_interrupts: false,
-            enable_interrupts: false,
-            stack: Vec::new()
+            enable_interrupts: false
         }
     }
 
@@ -93,6 +91,8 @@ impl Cpu {
             // own instruction set.
             CpuState::OpRead(OpRead::PrefixCB) => {
                 let byte = memory_controller.read_rom(self.registers.pc as usize).unwrap();
+                self.instruction = Instruction::prefixed(byte, "");
+
                 self.state = CpuState::Exec;
                 self.registers.pc = wrapping_inc_16(self.registers.pc);
             },
@@ -512,7 +512,11 @@ impl Cpu {
 
             // calls
             "1100_1101" => if let &Arg::Addr16(addr) = arg {
-                // push the next address onto the stack
+                #[bitmatch] let "hhhhhhhh_llllllll" = self.registers.pc;
+                memory.write_ram(self.registers.sp as usize, h);
+                self.registers.sp = wrapping_dec_16(self.registers.sp);
+                memory.write_ram(self.registers.sp as usize, l);
+                self.registers.sp = wrapping_dec_16(self.registers.sp);
 
                 self.registers.pc = addr;
             },
@@ -527,7 +531,11 @@ impl Cpu {
                 };
 
                 if cond {
-                    // Push next address onto the stack
+                    #[bitmatch] let "hhhhhhhh_llllllll" = self.registers.pc;
+                    memory.write_ram(self.registers.sp as usize, h);
+                    self.registers.sp = wrapping_dec_16(self.registers.sp);
+                    memory.write_ram(self.registers.sp as usize, l);
+                    self.registers.sp = wrapping_dec_16(self.registers.sp);
 
                     self.registers.pc = addr;
                 }
@@ -535,10 +543,15 @@ impl Cpu {
 
             // returns
             "110x_1001" => if let Arg::None = arg {
+                let l = memory.read_ram(self.registers.sp as usize).unwrap();
+                self.registers.sp = wrapping_inc_16(self.registers.sp);
+                let h = memory.read_ram(self.registers.sp as usize).unwrap();
+                self.registers.sp = wrapping_inc_16(self.registers.sp);
+
+                self.registers.pc = bitpack!("hhhhhhhh_llllllll") as u16;
+
                 if x == 1 {
-                    // reti
-                } else {
-                    // ret
+                    self.enable_interrupts = true;
                 }
             }
 
@@ -552,7 +565,12 @@ impl Cpu {
                 };
 
                 if cond {
-                    // ret
+                    let l = memory.read_ram(self.registers.sp as usize).unwrap();
+                    self.registers.sp = wrapping_inc_16(self.registers.sp);
+                    let h = memory.read_ram(self.registers.sp as usize).unwrap();
+                    self.registers.sp = wrapping_inc_16(self.registers.sp);
+
+                    self.registers.pc = bitpack!("hhhhhhhh_llllllll") as u16;
                 }
             },
 
@@ -623,10 +641,83 @@ impl Cpu {
             "111?_1101" => {}
         }
 
+
+
         Ok(())
     }
 
+    /// The so-called "prefixed instructions" are nonvalant bitwise operations. The opcode 0xCB
+    /// is used to signal to the processor to use these instructions, so I call them "prefixed
+    /// instructions".
+    #[bitmatch]
     fn execute_prefixed_instruction(&mut self, memory: &mut MBC) -> Result<(), String> {
+        // Destructure the opcode to get information about which function (f) to execute and the
+        // target (t) of the instruction.
+        #[bitmatch] let "ffff_fttt" = self.instruction.opcode;
+
+        let target = match t {
+            0b000 => self.registers.b.0,
+            0b001 => self.registers.c.0,
+            0b010 => self.registers.d.0,
+            0b011 => self.registers.e.0,
+            0b100 => self.registers.h.0,
+            0b101 => self.registers.l.0,
+            0b110 => memory.read_ram(self.registers.get_hl() as usize).unwrap(),
+            0b111 => self.registers.a.0
+        };
+
+        #[bitmatch]
+        let result = match f {
+            // rlc: rotate left through the carry
+            "00000" => { /* rlc */ },
+
+            // rrc: rotate right through the carry
+            "00001" => { /* rrc */ },
+
+            // rl: rotate left
+            "00010" => { /* rl */ },
+
+            // rr: rotate right
+            "00011" => { /* rr */ },
+
+            // sla: arithmetic left shift
+            "00100" => { /* sla */ },
+
+            // sra: arithmetic right shift
+            "00101" => { /* sra */ },
+
+            // swap: swap the upper and lower nibbles
+            "00110" => {
+                #[bitmatch] let "xxxx_yyyy" = target;
+                bitpack!("yyyy_xxxx")
+            },
+
+            // srl: logical right shift
+            "00111" => { /* srl */ },
+
+            // bit: get the value of bit n
+            "01nnn" => {
+                let mask = 1 << n;
+                (target & mask) >> n
+            },
+
+            // res: reset bit n (set it to 0)
+            "10nnn" => {
+                let mask = !(1 << n);
+                target & mask
+            },
+
+            // set: set bit n (set it to 1)
+            "11nnn" => {
+                let mask = 1 << n;
+                target | mask
+            }
+        };
+
         Ok(())
+    }
+
+    fn pause_for_cycles(&mut self, cycles: usize) {
+
     }
 }

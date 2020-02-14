@@ -1,8 +1,8 @@
 pub mod cartridge;
-pub mod memory;
-pub mod instruction;
-pub mod registers;
 pub mod cpu;
+pub mod instruction;
+pub mod memory;
+pub mod registers;
 pub(crate) mod utils;
 
 #[cfg(test)]

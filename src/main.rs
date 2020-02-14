@@ -38,6 +38,8 @@ use glutin::{
 
 //use self::graphics::gl_types::*;
 use std::fs::File;
+use crate::classic::cpu::{Cpu, CpuState};
+use crate::classic::memory::{MBC, ROM};
 
 const STACK_SIZE: usize = 0x4000000;
 
@@ -175,11 +177,11 @@ fn run() {
 
 
 fn main() {
-    let child = thread::Builder::new()
-        .stack_size(STACK_SIZE)
-        .name(String::from("gbars"))
-        .spawn(run)
-        .unwrap();
-
-    child.join().unwrap();
+    //    let child = thread::Builder::new()
+//        .stack_size(STACK_SIZE)
+//        .name(String::from("gbars"))
+//        .spawn(run)
+//        .unwrap();
+//
+//    child.join().unwrap();
 }

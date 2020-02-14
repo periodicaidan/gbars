@@ -38,17 +38,16 @@ impl Instruction {
         }
     }
 
-    fn prefixed(
+    pub(crate) fn prefixed(
         opcode: u8,
-        asm: &str,
-        cycles: usize
+        asm: &str
     ) -> Self {
         Self {
             opcode,
             prefixed: true,
             asm: asm.to_string(),
             arg: Arg::None,
-            cycles: (cycles, cycles),
+            cycles: (8, 8),
         }
     }
 
