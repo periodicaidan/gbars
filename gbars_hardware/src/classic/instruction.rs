@@ -1,3 +1,6 @@
+#[cfg(all(not(feature = "std"), feature = "alloc"))]
+use alloc::string::{String, ToString};
+
 #[derive(Debug, Clone)]
 pub struct Instruction {
     pub opcode: u8,

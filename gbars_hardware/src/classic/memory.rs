@@ -1,5 +1,15 @@
-use std::ops::{Deref, DerefMut};
+#[cfg(all(not(feature = "std"), feature = "alloc"))]
+use alloc::{
+    vec::Vec,
+    string::String,
+};
+
+use core::ops::{Deref, DerefMut};
 use bitmatch::bitmatch;
+
+pub trait Readable {
+    fn read_byte(&self, offset: usize) -> u8;
+}
 
 /// The ROM of the cartridge, which is a pointer to a vector of bytes
 pub struct ROM(Vec<u8>);

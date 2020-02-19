@@ -1,5 +1,5 @@
 use bitmatch::bitmatch;
-use std::ops::{Add, AddAssign, Sub, SubAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Deref, DerefMut};
+use core::ops::{Add, AddAssign, Sub, SubAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Deref, DerefMut};
 use super::utils::{wrapping_inc_16, wrapping_dec_16};
 
 /// The Zilog Z80 has an accumulator (A) and flag (F) register, along with 6 general-purpose

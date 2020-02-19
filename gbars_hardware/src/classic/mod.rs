@@ -1,4 +1,5 @@
-pub mod cartridge;
+// cartridge depends on std::fs, std::io, and std::error
+#[cfg(feature = "std")] pub mod cartridge;
 pub mod cpu;
 pub mod instruction;
 pub mod memory;
@@ -40,12 +41,12 @@ mod test {
             0x00,               // nop
             0x04,               // inc b
             0x0E, 0x39,         // ld C, $39
-            0xC3, 0x00, 0x0B,   // jp $000B
+            0xC3, 0x0B, 0x00,   // jp $000B
             0x15,               // dec D
             0x78,               // ld A, B
             0xD6, 0x01,         // sub 1
-            0xCA, 0x00, 0x07,   // jp z $0007
-            0xC3, 0x00, 0x08    // jp $0008
+            0xCA, 0x07, 0x00,   // jp z $0007
+            0xC3, 0x08, 0x00    // jp $0008
         ];
 
         let mut memory_controller = MBC::RomOnly(ROM::new(program));
@@ -76,9 +77,9 @@ mod test {
 
         // jp $000B
         cpu.step(&mut memory_controller);
-        assert_eq!(cpu.state, CpuState::DataRead(DataRead::ShortHi));
-        cpu.step(&mut memory_controller);
         assert_eq!(cpu.state, CpuState::DataRead(DataRead::ShortLo));
+        cpu.step(&mut memory_controller);
+        assert_eq!(cpu.state, CpuState::DataRead(DataRead::ShortHi));
         cpu.step(&mut memory_controller);
         assert_eq!(cpu.state, CpuState::Exec);
         cpu.step(&mut memory_controller);
@@ -137,7 +138,7 @@ mod test {
                                 // loop:
             0x81,               // add C
             0x05,               // dec B
-            0xC2, 0x00, 0x06    // jp nz, loop
+            0xC2, 0x06, 0x00    // jp nz, loop
         ];
 
         let mut memory = MBC::RomOnly(ROM::new(program.clone()));
@@ -161,7 +162,7 @@ mod test {
                                 // loop:
             0x0C,               // inc C
             0x90,               // sub B
-            0xC2, 0x00, 0x06,   // jp nz, loop
+            0xC2, 0x06, 0x00,   // jp nz, loop
             0x79                // ld A, C
         ];
 

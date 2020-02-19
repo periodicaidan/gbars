@@ -1,9 +1,10 @@
+#![feature(proc_macro_hygiene)]
 #[macro_use] extern crate clap;
 #[macro_use] extern crate lazy_static;
-#[macro_use] extern crate bitmatch;
+
+use hardware::classic;
 
 //pub mod interface;
-pub mod classic;
 pub mod ips;
 //pub mod graphics;
 //pub mod emu;
@@ -38,8 +39,8 @@ use glutin::{
 
 //use self::graphics::gl_types::*;
 use std::fs::File;
-use crate::classic::cpu::{Cpu, CpuState};
-use crate::classic::memory::{MBC, ROM};
+use classic::cpu::{Cpu, CpuState};
+use classic::memory::{MBC, ROM};
 
 const STACK_SIZE: usize = 0x4000000;
 

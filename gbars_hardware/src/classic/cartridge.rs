@@ -1,9 +1,8 @@
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 use std::fs::File;
 use std::error::Error;
 use std::io::{BufReader, Read, Write};
 use core::fmt;
-use std::time::{Instant, SystemTime};
 
 use super::memory::*;
 
@@ -217,10 +216,35 @@ impl Cartridge {
     /// this is. You can basically just stick the header of an officially-licensed GameBoy game onto
     /// whatever you want and the GameBoy should have no problem trying to play it.
     pub fn validate(&self) -> Result<(), String> {
-        // The scrolling NintendoⓇ graphic is a short program that runs when you turn on the GB (it
-        // does exactly what you think). It is 48 bytes long, starting at offset 0x104, and must be
-        // exactly as follows
-        let scrolling_nintendo_graphic = [
+        // These bytes define a bitmap that makes the Nintendo logo that appears when the GameBoy is
+        // turned on. If you're wondering how to read this as a graphic, it's just a binary-encoded
+        // bitmap, where 1's are black pixels and 0's are white. You read it like:
+        //
+        // 0  2  4  6  8  10 12 14 16 18 20 22
+        // 1  3  5  7  9  11 13 15 17 19 21 23
+        // 24 26 28 30 32 34 36 38 40 42 44 46
+        // 25 27 29 31 33 35 37 39 41 43 45 47
+        //
+        // (In hex)
+        // C 6 C 0 0 0 0 0 0 1 8 0
+        // E 6 C 0 3 0 0 0 0 1 8 0
+        // E 6 0 0 7 8 0 0 0 1 8 0
+        // D 6 D B 3 3 C D 8 F 9 E
+        // D 6 D D B 6 6 E D 9 B 3
+        // C E D 9 B 7 E C D 9 B 3
+        // C E D 9 B 6 0 C D 9 B 3
+        // C 6 D 9 B 3 E C C F 9 E
+        //
+        // (In binary, with 0's removed)
+        // 11   11 11                             11
+        // 111  11 11        11                   11
+        // 111  11          1111                  11
+        // 11 1 11 11 11 11  11  1111  11 11   11111  1111
+        // 11 1 11 11 111 11 11 11  11 111 11 11  11 11  11
+        // 11  111 11 11  11 11 111111 11  11 11  11 11  11
+        // 11  111 11 11  11 11 11     11  11 11  11 11  11
+        // 11   11 11 11  11 11  11111 11  11  11111  1111
+        let nintendo_graphic = [
             0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B,
             0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
             0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E,
@@ -229,32 +253,32 @@ impl Cartridge {
             0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E,
         ];
 
-        // Rather than doing a slice comparison I'm checking each value in a loop for better
-        // debugging and error reporting.
-        for i in 0..48usize {
-            if let Some(b) = self.mbc.read_rom(0x104 + i) {
-                if b != scrolling_nintendo_graphic[i] {
-                    return Err(
-                        format!(
-                            "Error validating Nintendo graphic: Byte at offset 0x{:04X} must be 0x{:02X}; found 0x{:02X}",
-                            0x104 + i,
-                            scrolling_nintendo_graphic[i],
-                            b
-                        )
-                    );
-                }
-            } else {
-                return Err(format!("Could not get byte {:04X} for validation", 0x104 + i))
+        // For better debugging, rather than doing a straight slice comparison, we zip the above
+        // array with the corresponding slice of bytes in memory. Then we filter out all the cases
+        // there the bytes match, leaving only the non-matching bytes.
+        let mut non_matching_bytes: Vec<(usize, u8, u8)> = nintendo_graphic.iter().enumerate()
+            .zip(self.mbc.read_rom_slice(0x104, 0x104 + 48).unwrap().iter())
+            .filter(|&((_, &a), &b)| a != b)
+            .map(|((i, &a), &b)| (i, a, b))
+            .collect();
+
+        // If the resulting array is non-empty, return an error reporting all the incorrect bytes.
+        if !non_matching_bytes.is_empty() {
+            let mut error = "Error validating Nintendo graphic: The following bytes are incorrect:\n".to_string();
+            for (i, expected, actual) in non_matching_bytes {
+                error += &format!("At offset 0x{:04X}: Expected 0x{:02X}; found 0x{:02X}\n", 0x104 + i, expected, actual);
             }
+
+            return Err(error);
         }
 
         // The checksum starts from 0 and the value of one less than each byte from offset 0x0134 to
         // 0x014D is subtracted from it (with wrapping)
-        let mut checksum = 0u8;
-        for x in self.mbc.read_rom_slice(0x134, 0x14D).unwrap().iter() {
-            // checksum = checksum - x - 1
-            checksum = checksum.wrapping_sub(*x).wrapping_sub(1);
-        }
+        let checksum = self.mbc.read_rom_slice(0x134, 0x14D).unwrap()
+            .iter()
+            .fold(0u8, |checksum, x|
+                // checksum - x - 1
+                checksum.wrapping_sub(*x).wrapping_sub(1));
 
         if checksum != self.header_checksum {
             return Err(

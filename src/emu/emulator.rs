@@ -787,7 +787,7 @@ impl ROM {
     ///
     /// The global checksum is not actually checked by the GameBoy. It is found by
     /// adding up all the bytes on the ROM except for the global checksum bytes.
-    /// For the sake of emulating the hardware as closely as possible, an incorrect
+    /// For the sake of emulating the gbars_hardware as closely as possible, an incorrect
     /// global checksum won't cause an error but a warning will be produced.
     ///
 //    pub fn verify() -> Result<(), Error> {

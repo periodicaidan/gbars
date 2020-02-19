@@ -1,3 +1,5 @@
+pub const CLOCK_SPEED: usize = 4_194_304; // Hz
+
 pub fn wrapping_inc_8(n: u8) -> u8 { n.wrapping_add(1) }
 pub fn wrapping_dec_8(n: u8) -> u8 { n.wrapping_sub(1) }
 pub fn wrapping_inc_16(n: u16) -> u16 { n.wrapping_add(1) }
