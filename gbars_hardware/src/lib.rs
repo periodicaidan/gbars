@@ -4,6 +4,7 @@
 #[cfg(feature = "alloc")]
 #[macro_use] extern crate alloc;
 
+#[macro_use] extern crate bitmatch;
 #[macro_use] extern crate lazy_static;
 
 pub mod classic;

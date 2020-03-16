@@ -6,22 +6,16 @@ use hardware::classic;
 
 //pub mod interface;
 pub mod ips;
-//pub mod graphics;
+pub mod graphics;
 //pub mod emu;
-//pub mod ips;
 //pub mod audio;
 
 //use interface::cli::cli_main;
 //use interface::gui::gui_main;
 
-use std::vec::Vec;
-
 use std::thread;
-
 use std::path::Path;
-
 use std::env;
-
 use glutin::{
     event_loop::{
         EventLoop,
@@ -36,18 +30,12 @@ use glutin::{
         WindowEvent
     }
 };
-
-//use self::graphics::gl_types::*;
 use std::fs::File;
 use classic::cpu::{Cpu, CpuState};
 use classic::memory::{MBC, ROM};
+use std::ops::Range;
 
 const STACK_SIZE: usize = 0x4000000;
-
-enum GameBoyConsoleType {
-//    Classic(classic::gb_types::Console)
-}
-
 
 fn run() {
 //    let mut console = classic::gb_types::Console::init(
@@ -176,6 +164,24 @@ fn run() {
 //    })
 }
 
+struct Person {
+    name: String
+}
+
+impl Person {
+    fn name(&mut self) -> &mut str { self.name.as_mut_str() }
+}
+
+fn example() {
+    let mut name: &str;
+
+    fn borrow_name(n: &mut str) {
+        let mut p = Person { name: "Aidan".to_string() };
+        *n = *(p.name());
+    }
+
+    println!("{}", name);
+}
 
 fn main() {
     //    let child = thread::Builder::new()

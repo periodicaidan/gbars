@@ -9,7 +9,7 @@ use std::io::prelude::*;
 use std::io::{BufReader, BufWriter, SeekFrom};
 use std::ffi::OsStr;
 
-/// Reads and IPS file and extracts all the patches from it
+/// Reads an IPS file and extracts all the patches from it
 ///
 /// An IPS file looks as follows (whitespace added for readability):
 ///

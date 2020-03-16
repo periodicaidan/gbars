@@ -1,6 +1,7 @@
 [package]
 name = "hardware"
 version = "0.1.0"
+description = "no_std-compatible GameBoy hardware library for Rust"
 authors = ["Aidan T. Manning <periodicaidan@gmail.com>"]
 edition = "2018"
 

@@ -50,6 +50,8 @@ pub enum MBC {
     RomOnly(ROM),
 }
 
+/// The mode for the MBC. When prompted to switch a bank, the mode determines whether the MBC
+/// will switch the ROM bank or RAM bank.
 pub enum MbcMode {
     RomSelect,
     RamSelect,
@@ -221,14 +223,14 @@ impl MBC {
                 // RAM enable register
                 // Writing 0 into this address space disables the RAM
                 // Writing any number with lower nibble 0xA enables the RAM
-                0...0x1FFF => if data == 0 {
+                0..=0x1FFF => if data == 0 {
                     mbc.ram_enabled = false;
                 } else if data & 0x0F == 0x0A {
                     mbc.ram_enabled = true;
                 },
 
                 // (Lower) ROM bank select
-                0x2000...0x3FFF => {
+                0x2000..=0x3FFF => {
                     // This is used to select the lower 5 bits of the ROM bank number. The upper
                     // 2 bits (if applicable) are selected below.
                     let mut bank_number = (data & 0x1F) as usize;
@@ -238,7 +240,7 @@ impl MBC {
                 },
 
                 // RAM bank select or (Upper) ROM Bank select
-                0x4000...0x5FFF => {
+                0x4000..=0x5FFF => {
                     let mut bank_number = (data & 0x02) as usize;
                     if mbc.ram_enabled {
                         mbc.active_ram_bank = bank_number;
@@ -251,7 +253,7 @@ impl MBC {
                 },
 
                 // ROM/RAM mode select
-                0x6000...0x7FFF => match data {
+                0x6000..=0x7FFF => match data {
                     0 => mbc.mode = MbcMode::RomSelect,
                     1 => mbc.mode = MbcMode::RamSelect,
                     _ => {}
@@ -267,7 +269,7 @@ impl MBC {
                 //      0bXXXX_XXXB_XXXX_XXXX
                 //                |
                 //             this one
-                0...0x1FFF => if offset & 0x0100 == 0 {
+                0..=0x1FFF => if offset & 0x0100 == 0 {
                     if data == 0 {
                         mbc.ram_enabled = false;
                     } else if data & 0x0F == 0x0A {
@@ -278,7 +280,7 @@ impl MBC {
                 // ROM bank selection. We take the lower 4 bits only because MBC2 only has 16 banks.
                 // Additionally, the least significant bit of the upper address byte must be 1.
                 // This is the same byte as above.
-                0x2000...0x3FFF => if offset & 0x0100 == 1 {
+                0x2000..=0x3FFF => if offset & 0x0100 == 1 {
                     let bank_number = data & 0x0F;
                     mbc.active_rom_bank = bank_number as usize;
                 },
@@ -291,14 +293,14 @@ impl MBC {
             // use and it's how they accomplish things like daily events and time-variant encounters
             MBC::MBC3(mbc) => match offset {
                 // RAM and timer enable
-                0...0x1FFF => if data == 0 {
+                0..=0x1FFF => if data == 0 {
                     mbc.ram_and_timer_enabled = false;
                 } else if data & 0x0F == 0x0A {
                     mbc.ram_and_timer_enabled = true;
                 },
 
                 // ROM bank select
-                0x2000...0x3FFF => {
+                0x2000..=0x3FFF => {
                     let mut bank_number = (0x7F & data) as usize;
                     if bank_number == 0 {
                         bank_number = 1;
@@ -308,12 +310,12 @@ impl MBC {
                 },
 
                 // RAM bank select
-                0x4000...0x5FFF => if (0..=0x0C).contains(&data) {
+                0x4000..=0x5FFF => if (0..=0x0C).contains(&data) {
                     mbc.active_ram_bank = data as usize;
                 },
 
                 // Latches the time to the time register
-                0x6000...0x7FFF => if data == 1 && mbc.rom[offset] == 0 {
+                0x6000..=0x7FFF => if data == 1 && mbc.rom[offset] == 0 {
                     // TODO: Figure out a way to implement this
                 },
 
@@ -321,27 +323,27 @@ impl MBC {
             },
 
             MBC::MBC5(mbc) => match offset {
-                0...0x1FFF => if data == 0 {
+                0..=0x1FFF => if data == 0 {
                     mbc.ram_enabled = false;
                 } else if data & 0x0F == 0x0A {
                     mbc.ram_enabled = true;
                 },
 
-                0x2000...0x2FFF => {
+                0x2000..=0x2FFF => {
                     let mut bank_number = data as usize;
                     bank_number |= mbc.active_rom_bank & 0x0100;
 
                     mbc.active_rom_bank = bank_number;
                 },
 
-                0x3000...0x3FFF => {
+                0x3000..=0x3FFF => {
                     let mut bank_number = ((1 & data) << 8) as usize;
                     bank_number |= mbc.active_ram_bank & 0x00FF;
 
                     mbc.active_rom_bank = bank_number;
                 },
 
-                0x4000...0x5FFF => {
+                0x4000..=0x5FFF => {
                     mbc.active_ram_bank = (0x0F & data) as usize;
                 },
 

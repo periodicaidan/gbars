@@ -257,7 +257,7 @@ impl Cartridge {
         // array with the corresponding slice of bytes in memory. Then we filter out all the cases
         // there the bytes match, leaving only the non-matching bytes.
         let mut non_matching_bytes: Vec<(usize, u8, u8)> = nintendo_graphic.iter().enumerate()
-            .zip(self.mbc.read_rom_slice(0x104, 0x104 + 48).unwrap().iter())
+            .zip(self.mbc.read_rom_slice(0x104, 0x104 + 48).unwrap())
             .filter(|&((_, &a), &b)| a != b)
             .map(|((i, &a), &b)| (i, a, b))
             .collect();
@@ -276,9 +276,9 @@ impl Cartridge {
         // 0x014D is subtracted from it (with wrapping)
         let checksum = self.mbc.read_rom_slice(0x134, 0x14D).unwrap()
             .iter()
-            .fold(0u8, |checksum, x|
-                // checksum - x - 1
-                checksum.wrapping_sub(*x).wrapping_sub(1));
+            .fold(0u8, |c, x|
+                // c - x - 1
+                c.wrapping_sub(*x).wrapping_sub(1));
 
         if checksum != self.header_checksum {
             return Err(
