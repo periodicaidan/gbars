@@ -55,7 +55,7 @@ impl Cartridge {
                 {
                     let mut reader = BufReader::new(f);
                     if let Err(e) = reader.read_to_end(&mut contents) {
-                        return Err(format!("Error reading data from {}: {}", path_to_rom, e.description()));
+                        return Err(format!("Error reading data from {}: {}", path_to_rom, e.to_string()));
                     }
                 }
 
@@ -205,7 +205,7 @@ impl Cartridge {
                     }
                 )
             },
-            Err(e) => Err(format!("Could not open file {}: {}", path_to_rom, e.description())),
+            Err(e) => Err(format!("Could not open file {}: {}", path_to_rom, e.to_string())),
         }
     }
 
@@ -258,8 +258,8 @@ impl Cartridge {
         // there the bytes match, leaving only the non-matching bytes.
         let mut non_matching_bytes: Vec<(usize, u8, u8)> = nintendo_graphic.iter().enumerate()
             .zip(self.mbc.read_rom_slice(0x104, 0x104 + 48).unwrap())
-            .filter(|&((_, &a), &b)| a != b)
-            .map(|((i, &a), &b)| (i, a, b))
+            .filter(|&((_, &a), b)| a != b)
+            .map(|((i, &a), b)| (i, a, b))
             .collect();
 
         // If the resulting array is non-empty, return an error reporting all the incorrect bytes.

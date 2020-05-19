@@ -164,25 +164,6 @@ fn run() {
 //    })
 }
 
-struct Person {
-    name: String
-}
-
-impl Person {
-    fn name(&mut self) -> &mut str { self.name.as_mut_str() }
-}
-
-fn example() {
-    let mut name: &str;
-
-    fn borrow_name(n: &mut str) {
-        let mut p = Person { name: "Aidan".to_string() };
-        *n = *(p.name());
-    }
-
-    println!("{}", name);
-}
-
 fn main() {
     //    let child = thread::Builder::new()
 //        .stack_size(STACK_SIZE)

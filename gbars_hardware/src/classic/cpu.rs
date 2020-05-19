@@ -7,8 +7,9 @@ use bitmatch::bitmatch;
 use core::ops::Add;
 use super::registers::Reg8;
 use super::utils::{wrapping_inc_16, wrapping_dec_16, add_i8_to_u16};
-use crate::classic::utils::{wrapping_dec_8, CLOCK_SPEED};
+use crate::classic::utils::{wrapping_dec_8, CLOCK_SPEED, wrapping_inc_8};
 use crate::classic::memory::MBC;
+use crate::classic::console::Console;
 
 /// The CPU here is conceptualized as a state machine with some frills. Consuming a byte from memory
 /// changes its state.
@@ -55,13 +56,13 @@ impl Cpu {
     }
 
     /// Performs some action based on the CPU's state, and then transitions to the next state.
-    pub fn step(&mut self, memory_controller: &mut MBC) -> Result<(), String> {
+    pub fn step(&mut self, console: &mut Console) -> Result<(), String> {
         match self.state {
             // This is the initial state of the CPU. In this state, it reads the next byte in memory
             // as an opcode and decodes it as an instruction. The CPU then transitions to the next
             // state based on the argument the instruction expects.
             CpuState::OpRead(OpRead::General) => {
-                let opcode = memory_controller.read_rom(self.registers.pc as usize).unwrap();
+                let opcode = console.read(self.registers.pc as usize).unwrap();
                 self.instruction = Instruction::from_opcode(opcode);
 
                 match self.instruction.arg {
@@ -93,7 +94,7 @@ impl Cpu {
             // In this state, the next byte in memory is read as a *prefixed* opcode, which has its
             // own instruction set.
             CpuState::OpRead(OpRead::PrefixCB) => {
-                let byte = memory_controller.read_rom(self.registers.pc as usize).unwrap();
+                let byte = console.read(self.registers.pc as usize).unwrap();
                 self.instruction = Instruction::prefixed(byte, "");
 
                 self.state = CpuState::Exec;
@@ -103,7 +104,7 @@ impl Cpu {
             // In this state the next byte in memory is read as a literal byte and then the
             // CPU transitions to the `Exec` state.
             CpuState::DataRead(DataRead::Byte) => {
-                let byte = memory_controller.read_rom(self.registers.pc as usize).unwrap();
+                let byte = console.read(self.registers.pc as usize).unwrap();
                 self.instruction.arg = match self.instruction.arg {
                     Arg::Addr8(_) => Arg::Addr8(byte),
                     Arg::Data8(_) => Arg::Data8(byte),
@@ -118,7 +119,7 @@ impl Cpu {
             // The next byte in memory is read as the low byte of a literal short and then the
             // CPU transitions to the `DataRead::ShortHi` state to get the high byte.
             CpuState::DataRead(DataRead::ShortLo) => {
-                let byte = memory_controller.read_rom(self.registers.pc as usize).unwrap();
+                let byte = console.read(self.registers.pc as usize).unwrap();
                 self.instruction.arg = match self.instruction.arg {
                     Arg::Addr16(_) => Arg::Addr16(byte as u16),
                     Arg::Data16(_) => Arg::Data16(byte as u16),
@@ -133,7 +134,7 @@ impl Cpu {
             // combined with the low byte obtained in the previous state to form a whole 16-bit
             // unsigned short. Then the CPU transitions to the `Exec` state.
             CpuState::DataRead(DataRead::ShortHi) => {
-                let byte = memory_controller.read_rom(self.registers.pc as usize).unwrap() as u16;
+                let byte = console.read(self.registers.pc as usize).unwrap() as u16;
                 self.instruction.arg = match self.instruction.arg {
                     Arg::Addr16(addr) => Arg::Addr16((byte << 8) | addr),
                     Arg::Data16(data) => Arg::Data16((byte << 8) | data),
@@ -153,9 +154,9 @@ impl Cpu {
                 let ei = self.enable_interrupts;
 
                 if self.instruction.prefixed {
-                    self.execute_prefixed_instruction(memory_controller);
+                    self.execute_prefixed_instruction(console);
                 } else {
-                    self.execute_instruction(memory_controller);
+                    self.execute_instruction(console);
                 }
 
                 if di {
@@ -177,7 +178,7 @@ impl Cpu {
 
     /// Executes the current (unprefixed) instruction
     #[bitmatch]
-    fn execute_instruction(&mut self, memory: &mut MBC) -> Result<(), String> {
+    fn execute_instruction(&mut self, console: &mut Console) -> Result<(), String> {
         let opcode = self.instruction.opcode;
         let arg = &self.instruction.arg;
 
@@ -257,17 +258,17 @@ impl Cpu {
                 "00xx_0010" => {
                     match x {
                         0b00 => {
-                            memory.write_ram(self.registers.get_bc() as usize, self.registers.a.0);
+                            console.write(self.registers.get_bc() as usize, self.registers.a.0);
                         },
                         0b01 => {
-                            memory.write_ram(self.registers.get_de() as usize, self.registers.a.0);
+                            console.write(self.registers.get_de() as usize, self.registers.a.0);
                         },
                         0b10 => {
-                            let res = memory.write_ram(self.registers.get_hl() as usize, self.registers.a.0);
+                            console.write(self.registers.get_hl() as usize, self.registers.a.0);
                             self.registers.inc_hl();
                         },
                         0b11 => {
-                            let res = memory.write_ram(self.registers.get_hl() as usize, self.registers.a.0);
+                            console.write(self.registers.get_hl() as usize, self.registers.a.0);
                             self.registers.dec_hl();
                         },
                         _ => {}
@@ -275,17 +276,17 @@ impl Cpu {
                     false
                 },
 
-                // load the data at a memory location stored into A
+                // load the data stored at a memory location into A
                 "00xx_1010" => {
                     match x {
-                        0b00 => self.registers.a.0 = memory.read_ram(self.registers.get_bc() as usize).unwrap(),
-                        0b01 => self.registers.a.0 = memory.read_ram(self.registers.get_de() as usize).unwrap(),
+                        0b00 => self.registers.a.0 = console.read(self.registers.get_bc() as usize).unwrap(),
+                        0b01 => self.registers.a.0 = console.read(self.registers.get_de() as usize).unwrap(),
                         0b10 => {
-                            self.registers.a.0 = memory.read_ram(self.registers.get_hl() as usize).unwrap();
+                            self.registers.a.0 = console.read(self.registers.get_hl() as usize).unwrap();
                             self.registers.inc_hl();
                         },
                         0b11 => {
-                            self.registers.a.0 = memory.read_ram(self.registers.get_hl() as usize).unwrap();
+                            self.registers.a.0 = console.read(self.registers.get_hl() as usize).unwrap();
                             self.registers.dec_hl();
                         },
                         _ => {}
@@ -332,8 +333,8 @@ impl Cpu {
                             0b100 => self.registers.h += 1,
                             0b101 => self.registers.l += 1,
                             0b110 => {
-                                let data = memory.read_ram(self.registers.get_hl() as usize).unwrap();
-                                memory.write_ram(self.registers.get_hl() as usize, data + 1);
+                                let offset = self.registers.get_hl() as usize;
+                                console.alter(offset, wrapping_inc_8);
                             },
                             0b111 => self.registers.a += 1,
                             _ => {}
@@ -352,7 +353,7 @@ impl Cpu {
                             0b011 => self.registers.e.0,
                             0b100 => self.registers.h.0,
                             0b101 => self.registers.l.0,
-                            0b110 => memory.read_ram(self.registers.get_hl() as usize).unwrap(),
+                            0b110 => console.read(self.registers.get_hl() as usize).unwrap(),
                             0b111 => self.registers.a.0,
                             _ => panic!()
                         };
@@ -367,7 +368,7 @@ impl Cpu {
                             0b100 => self.registers.h.0 = after,
                             0b101 => self.registers.l.0 = after,
                             0b110 => {
-                                memory.write_ram(self.registers.get_hl() as usize, after);
+                                console.write(self.registers.get_hl() as usize, after);
                             },
                             0b111 => self.registers.a.0 = after,
                             _ => panic!()
@@ -394,7 +395,7 @@ impl Cpu {
                             0b100 => self.registers.h.load(data),
                             0b101 => self.registers.l.load(data),
                             0b110 => {
-                                memory.write_ram(self.registers.get_hl() as usize, data);
+                                console.write(self.registers.get_hl() as usize, data);
                             },
                             0b111 => self.registers.a.load(data),
                             _ => {}
@@ -418,7 +419,7 @@ impl Cpu {
                             0b011 => self.registers.e.0,
                             0b100 => self.registers.h.0,
                             0b101 => self.registers.l.0,
-                            0b110 => memory.read_ram(self.registers.get_hl() as usize).unwrap(),
+                            0b110 => console.read(self.registers.get_hl() as usize).unwrap(),
                             0b111 => self.registers.a.0,
                             _ => panic!()
                         };
@@ -431,7 +432,7 @@ impl Cpu {
                             0b100 => self.registers.h.load(data),
                             0b101 => self.registers.l.load(data),
                             0b110 => {
-                                memory.write_ram(self.registers.get_hl() as usize, data);
+                                console.write(self.registers.get_hl() as usize, data);
                             },
                             0b111 => self.registers.a.load(data),
                             _ => panic!()
@@ -450,7 +451,7 @@ impl Cpu {
                             0b011 => self.registers.e.0,
                             0b100 => self.registers.h.0,
                             0b101 => self.registers.l.0,
-                            0b110 => memory.read_ram(self.registers.get_hl() as usize).unwrap(),
+                            0b110 => console.read(self.registers.get_hl() as usize).unwrap(),
                             0b111 => self.registers.a.0,
                             _ => panic!()
                         };
@@ -504,7 +505,7 @@ impl Cpu {
 
                 // pop the stack
                 "11xx_0001" => {
-                    let data = self.pop_stack(memory);
+                    let data = self.pop_stack(console);
                     match x {
                         0b00 => self.registers.set_bc(data),
                         0b01 => self.registers.set_de(data),
@@ -524,7 +525,7 @@ impl Cpu {
                         0b11 => self.registers.get_af(),
                         _ => panic!()
                     };
-                    self.push_stack(memory, data);
+                    self.push_stack(console, data);
                     false
                 },
 
@@ -532,7 +533,7 @@ impl Cpu {
                 "11xx_x111" => {
                     if let Arg::None = arg {
                         let reset = x * 8;
-                        self.push_stack(memory, self.registers.pc);
+                        self.push_stack(console, self.registers.pc);
 
                         self.registers.pc = reset as u16;
                     }
@@ -599,7 +600,7 @@ impl Cpu {
                 // calls
                 "1100_1101" => {
                     if let &Arg::Addr16(addr) = arg {
-                        self.push_stack(memory, self.registers.pc);
+                        self.push_stack(console, self.registers.pc);
 
                         self.registers.pc = addr;
                     }
@@ -617,7 +618,7 @@ impl Cpu {
                         };
 
                         if cond {
-                            self.push_stack(memory, self.registers.pc);
+                            self.push_stack(console, self.registers.pc);
                             self.registers.pc = addr;
                         }
 
@@ -628,7 +629,7 @@ impl Cpu {
                 // returns
                 "110x_1001" => {
                     if let Arg::None = arg {
-                        self.registers.pc = self.pop_stack(memory);
+                        self.registers.pc = self.pop_stack(console);
 
                         if x == 1 {
                             self.enable_interrupts = true;
@@ -648,7 +649,7 @@ impl Cpu {
                         };
 
                         if cond {
-                            self.registers.pc = self.pop_stack(memory);
+                            self.registers.pc = self.pop_stack(console);
                         }
 
                         cond
@@ -673,9 +674,9 @@ impl Cpu {
                         let addr = 0xFF00 + (half_addr as usize);
 
                         if x == 0 {
-                            memory.write_ram(addr, self.registers.a.0);
+                            console.write(addr, self.registers.a.0);
                         } else {
-                            self.registers.a.load(memory.read_ram(addr).unwrap());
+                            self.registers.a.load(console.read(addr).unwrap());
                         }
                     }
                     false
@@ -685,9 +686,9 @@ impl Cpu {
                     let addr = 0xFF00 + (self.registers.c.0 as usize);
 
                     if x == 0 {
-                        memory.write_ram(addr, self.registers.a.0);
+                        console.write(addr, self.registers.a.0);
                     } else {
-                        self.registers.a.load(memory.read_ram(addr).unwrap());
+                        self.registers.a.load(console.read(addr).unwrap());
                     }
 
                     false
@@ -696,9 +697,9 @@ impl Cpu {
                 "111x_1010" => {
                     if let &Arg::Addr16(addr) = arg {
                         if x == 0 {
-                            memory.write_ram(addr as usize, self.registers.a.0);
+                            console.write(addr as usize, self.registers.a.0);
                         } else {
-                            self.registers.a.load(memory.read_ram(addr as usize).unwrap());
+                            self.registers.a.load(console.read(addr as usize).unwrap());
                         }
                     }
                     false
@@ -707,8 +708,8 @@ impl Cpu {
                 // stack pointer loads
                 "0000_1000" => {
                     if let &Arg::Addr16(addr) = arg {
-                        memory.write_ram(addr as usize, (self.registers.sp & 0xF0) as u8);
-                        memory.write_ram((addr + 1) as usize, (self.registers.sp & 0x0F) as u8);
+                        console.write(addr as usize, (self.registers.sp & 0xF0) as u8);
+                        console.write((addr + 1) as usize, (self.registers.sp & 0x0F) as u8);
                     }
                     false
                 },
@@ -759,7 +760,7 @@ impl Cpu {
     /// is used to signal to the processor to use these instructions, so I call them "prefixed
     /// instructions".
     #[bitmatch]
-    fn execute_prefixed_instruction(&mut self, memory: &mut MBC) -> Result<(), String> {
+    fn execute_prefixed_instruction(&mut self, console: &mut Console) -> Result<(), String> {
         // Destructure the opcode to get information about which function (f) to execute and the
         // target (t) of the instruction.
         #[bitmatch] let "ffff_fttt" = self.instruction.opcode;
@@ -771,7 +772,7 @@ impl Cpu {
             0b011 => self.registers.e.0,
             0b100 => self.registers.h.0,
             0b101 => self.registers.l.0,
-            0b110 => memory.read_ram(self.registers.get_hl() as usize).unwrap(),
+            0b110 => console.read(self.registers.get_hl() as usize).unwrap(),
             0b111 => self.registers.a.0,
             _ => panic!()
         };
@@ -928,7 +929,7 @@ impl Cpu {
             0b100 => self.registers.h.0 = result,
             0b101 => self.registers.l.0 = result,
             0b110 => {
-                memory.write_ram(self.registers.get_hl() as usize, result);
+                console.write(self.registers.get_hl() as usize, result);
             },
             0b111 => self.registers.a.0 = result,
             _ => panic!()
@@ -950,19 +951,19 @@ impl Cpu {
     }
 
     #[bitmatch]
-    fn push_stack(&mut self, memory: &mut MBC, addr: u16) {
+    fn push_stack(&mut self, console: &mut Console, addr: u16) {
         #[bitmatch] let "hhhhhhhh_llllllll" = addr;
-        memory.write_ram(self.registers.sp as usize, h as u8);
+        console.write(self.registers.sp as usize, h as u8);
         self.registers.sp = wrapping_dec_16(self.registers.sp);
-        memory.write_ram(self.registers.sp as usize, l as u8);
+        console.write(self.registers.sp as usize, l as u8);
         self.registers.sp = wrapping_dec_16(self.registers.sp);
     }
 
     #[bitmatch]
-    fn pop_stack(&mut self, memory: &mut MBC) -> u16 {
-        let h = memory.read_ram(self.registers.sp as usize).unwrap();
+    fn pop_stack(&mut self, console: &mut Console) -> u16 {
+        let h = console.read(self.registers.sp as usize).unwrap();
         self.registers.sp = wrapping_inc_16(self.registers.sp);
-        let l = memory.read_ram(self.registers.sp as usize).unwrap();
+        let l = console.read(self.registers.sp as usize).unwrap();
         self.registers.sp = wrapping_inc_16(self.registers.sp);
 
         bitpack!("hhhhhhhh_llllllll") as u16

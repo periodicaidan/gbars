@@ -13,13 +13,13 @@ Raspberry Pi and make a little hacked-together GameBoy.
 **Goals**
 - Support as many games as possible, as well as possible
 - GameBoy, GameBoy Color, and (eventually) GameBoy Advance
+- Support for link cable play
 - Debugger and disassembler
 - Good documentation
 - Modular and embeddable
 - Minimal dependency graph
 
 **Non-Goals**
-- Cycle-accuracy
 - Peripheral support (GB Printer, GB Camera, etc.)
 
 ## Package Structure
@@ -69,6 +69,7 @@ gbars/
 |
 +-- DESIGNDOC.md
 ```
+(N.B.: Structure is not final. Intuiting package structure *a priori* is really, really hard.)
 
 ## The Road to `no_std`
 
@@ -112,21 +113,22 @@ currently have no plans for it, and it'll probably be the last thing I get worki
 Taking a glance at [Are We GUI Yet?](https://areweguiyet.com/), it would appear that we are
 not, in fact, GUI yet. [Azul](https://azul.rs/) is a very promising IMGUI-style library written in pure Rust. However
 I don't think it is quite ready to use yet (it's not even on crates.io). If and when it is, I would love to use it, as it seems
-very flexible. 
+very flexible. Another god contender is [`iced`](https://github.com/hecrj/iced), which uses an Elm-like architecture to
+structure code. I've been using Elm recently and love its design so this would be a great option as well.
 
-After contemplating temporary solutions, I think the best answer is one that isn't listed on Are We GUI Yet?: Flutter. 
+But after contemplating other solutions, I think the best answer is one that isn't listed on Are We GUI Yet?: Flutter. 
 [`flutter-rs`](https://github.com/flutter-rs/flutter-rs) is a library that lets you write desktop
 apps with Rust and Flutter, *without having to leverage an FFI*. And Flutter exposes a class that can serve as an OpenGL
 context, so this may just be the perfect solution for the time being. This has a few problems though, as the library 
-isn't stable yet (and currently crashes when a mouse enters the window). However it is in active development and the
+isn't stable yet (and currently crashes on Linux when a mouse enters the window). However it is in active development and the
 devs seem really serious about fixing the issues, so I think the major problems will be hammered out by the time I get
-around to designing the UI.
+around to designing the UI. I could probably also fix the mouse enter issue on Linux myself :p 
 
 Failing that, there is [wxWidgets](https://www.wxwidgets.org/), which will create a GUI that uses
 native API's, making the app look natural on all platforms. It also provides OpenGL contexts, so 
 this is a viable solution. [There are Rust bindings for it](https://github.com/kenz-gelsoft/wxRust)
 but they don't appear to be actively maintained anymore, so I may have to do it in C++ (god no) or
-Python (actually viable) or Haskell (for laughs). However, doing the GUI in another language may
+Python (actually viable) or Haskell (for the meme). However, doing the GUI in another language may
 require significant reworking versus doing it in Rust or with `flutter-rs`.
 
 ## Some Notes on Programming Style

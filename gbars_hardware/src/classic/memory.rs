@@ -337,7 +337,7 @@ impl MBC {
                 },
 
                 0x3000..=0x3FFF => {
-                    let mut bank_number = ((1 & data) << 8) as usize;
+                    let mut bank_number = ((1 & data as usize) << 8);
                     bank_number |= mbc.active_ram_bank & 0x00FF;
 
                     mbc.active_rom_bank = bank_number;
